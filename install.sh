@@ -136,6 +136,55 @@ progress_install() {
     return $exit_code
 }
 
+# Função para instalar yay do AUR
+install_yay() {
+    msg "Instalando yay (AUR helper)..."
+    
+    # Verificar se yay já está instalado
+    if command -v yay &> /dev/null; then
+        echo -e "${GREEN}✓ yay já está instalado${NC}"
+        return 0
+    fi
+    
+    # Verificar dependências necessárias
+    if ! pacman -Qi git base-devel &>/dev/null; then
+        echo -e "${YELLOW}Instalando dependências para yay...${NC}"
+        sudo pacman -S --needed --noconfirm git base-devel || {
+            echo -e "${RED}❌ Falha ao instalar dependências${NC}"
+            return 1
+        }
+    fi
+    
+    # Criar diretório temporário para build
+    local temp_dir="/tmp/yay_install_$$"
+    mkdir -p "$temp_dir"
+    cd "$temp_dir"
+    
+    echo -e "${BLUE}Clonando repositório do yay...${NC}"
+    git clone https://aur.archlinux.org/yay.git || {
+        echo -e "${RED}❌ Falha ao clonar repositório${NC}"
+        return 1
+    }
+    
+    cd yay
+    echo -e "${BLUE}Compilando e instalando yay...${NC}"
+    
+    # Construir e instalar
+    makepkg -si --noconfirm || {
+        echo -e "${RED}❌ Falha ao instalar yay${NC}"
+        cd ~
+        rm -rf "$temp_dir"
+        return 1
+    }
+    
+    # Limpar
+    cd ~
+    rm -rf "$temp_dir"
+    
+    echo -e "${GREEN}✅ yay instalado com sucesso!${NC}"
+    return 0
+}
+
 export_packages() {
     echo "Exporting installed packages for Arch Linux..."
     pacman -Qqe > "$HOME/package_list_arch.txt"
@@ -166,6 +215,10 @@ echo
 if [ "$ONLY_CONFIG" = false ]; then
     msg "Updating system..."
     sudo pacman -Syu --noconfirm
+
+    install_yay || {
+        echo -e "${YELLOW}⚠️  Continuando sem yay, usando pacman para pacotes AUR${NC}"
+    }
 else
     msg "Skipping system update (--only-config mode)"
 fi
@@ -193,7 +246,7 @@ PACKAGES_AUDIO=(
 
 PACKAGES_UTILITIES=(
     avahi acpi acpid xfce4-power-manager
-    flameshot qimgv micro xdg-user-dirs
+    flameshot qimgv micro xdg-user-dirs  
 )
 
 PACKAGES_TERMINAL=(

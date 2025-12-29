@@ -193,7 +193,7 @@ PACKAGES_AUDIO=(
 
 PACKAGES_UTILITIES=(
     avahi acpi acpid xfce4-power-manager
-    flameshot micro xdg-user-dirs
+    flameshot qimgv micro xdg-user-dirs
 )
 
 PACKAGES_TERMINAL=(

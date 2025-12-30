@@ -2,9 +2,11 @@
 
 ### Quick Install
 ```bash
-git clone https://https://github.com/owhska/dotfiles.git
-cd dotfiles
+git clone https://https://github.com/owhska/sarch.git
+cd sarch
 chmod +x install.sh
+chmod +x install-yay.sh
+./install-yay.sh
 ./install.sh
 
 ```

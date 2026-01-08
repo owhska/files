@@ -676,4 +676,159 @@ if [ "$ONLY_CONFIG" = false ]; then
 
         # Instala plugins apenas se o Oh My Zsh foi instalado
         if [ -d "$ZSH_CUSTOM" ]; then
-            git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_C
+            git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM}/plugins/zsh-autosuggestions 2>/dev/null || true
+            git clone https://github.com/zsh-users/zsh-syntax-highlighting ${ZSH_CUSTOM}/plugins/zsh-syntax-highlighting 2>/dev/null || true
+            git clone https://github.com/zsh-users/zsh-completions ${ZSH_CUSTOM}/plugins/zsh-completions 2>/dev/null || true
+            git clone https://github.com/supercrabtree/k ${ZSH_CUSTOM}/plugins/k 2>/dev/null || true
+            git clone https://github.com/agkozak/zsh-z ${ZSH_CUSTOM}/plugins/zsh-z 2>/dev/null || true
+        else
+            msg "Aviso: Diretório do Oh My Zsh não encontrado, pulando plugins..."
+        fi
+
+        msg "Configurando .zshrc personalizado..."
+        # Cria .zshrc personalizado
+        cat > "$HOME/.zshrc" << 'EOF'
+# Path to your oh-my-zsh installation.
+export ZSH="$HOME/.oh-my-zsh"
+
+ZSH_THEME="robbyrussell"
+# ZSH_THEME="custom"
+
+plugins=(
+    git
+    docker
+    zsh-autosuggestions
+    zsh-completions
+    k
+    zsh-z
+)
+
+source $ZSH/oh-my-zsh.sh
+
+zstyle ':completion:*:default' list-colors ${(s.:.)LS_COLORS}
+
+# Aliases úteis
+alias ls='eza --icons --group-directories-first'
+alias ll='eza -la --icons --group-directories-first'
+alias cls='clear'
+alias ..='cd ..'
+alias ...='cd ../..'
+alias gitp='git push -f origin'
+alias l='yay -Ss'
+alias g='yay -S'
+alias v='nvim'
+alias c='clear'
+alias q='exit'
+alias w='micro'
+alias f='yazi'
+alias ff="fastfetch"
+alias sai="sudo pacman -S"
+alias sup="sudo pacman -Syu"
+alias t="tmux"
+
+# To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+
+gpush() {
+  git add .
+  git commit -m "$*"
+  git push
+}
+EOF
+
+        # Configuração básica do Powerlevel10k
+        if [ ! -f "$HOME/.p10k.zsh" ]; then
+            cat > "$HOME/.p10k.zsh" << 'EOF'
+# Configuração básica do Powerlevel10k
+POWERLEVEL9K_MODE='nerdfont-complete'
+POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(context dir vcs)
+POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=(status command_execution_time background_jobs)
+POWERLEVEL9K_PROMPT_ADD_NEWLINE=true
+POWERLEVEL9K_SHORTEN_DIR_LENGTH=2
+EOF
+        fi
+
+        # AGORA muda o shell padrão - APENAS no final de tudo
+        msg "Definindo zsh como shell padrão para sessões futuras..."
+        sudo chsh -s $(which zsh) $USER
+
+        msg "zsh + oh-my-zsh + powerlevel10k instalados com sucesso!"
+        echo -e "${GREEN}Na próxima vez que você fizer login ou abrir um novo terminal, o zsh será ativado automaticamente!${NC}"
+        echo -e "${GREEN}Execute 'p10k configure' para personalizar o Powerlevel10k depois.${NC}"
+
+        # Apenas informa o usuário sem executar o zsh
+        echo
+        echo -e "${CYAN}Para ativar o zsh AGORA (opcional), execute:${NC}"
+        echo -e "${CYAN}  exec zsh${NC}"
+        echo -e "${CYAN}Ou simplesmente feche e reabra o terminal.${NC}"
+    fi
+else
+    msg "Pulando instalação do zsh/oh-my-zsh (--only-config mode)"
+fi
+
+# Verificação final do sistema
+if [ "$ONLY_CONFIG" = false ]; then
+    echo -e "\n${CYAN}=== VERIFICAÇÃO FINAL ===${NC}"
+    
+    # Verificar NVIDIA
+    if command -v nvidia-smi &> /dev/null; then
+        echo -e "${GREEN}✅ NVIDIA drivers: INSTALADOS${NC}"
+        echo -e "${BLUE}Informações da GPU:${NC}"
+        nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
+    else
+        echo -e "${YELLOW}⚠️  NVIDIA drivers: NÃO INSTALADOS ou com problemas${NC}"
+    fi
+    
+    # Verificar serviços
+    echo -e "\n${BLUE}Serviços ativados:${NC}"
+    if systemctl is-enabled lightdm &>/dev/null; then
+        echo -e "  ${GREEN}✓ lightdm${NC}"
+    else
+        echo -e "  ${YELLOW}✗ lightdm (não ativado)${NC}"
+    fi
+    
+    # Verificar i3
+    if command -v i3 &> /dev/null; then
+        echo -e "${GREEN}✅ i3: INSTALADO${NC}"
+    else
+        echo -e "${RED}❌ i3: NÃO INSTALADO${NC}"
+    fi
+fi
+
+# Done
+echo -e "\n${GREEN}✅ Installation complete!${NC}"
+echo -e "${CYAN}Próximos passos:${NC}"
+echo "1. Log out and select 'i3' from your display manager"
+echo "2. Press Super+Z for keybindings"
+echo "3. If using lightdm, reboot or restart lightdm service"
+echo -e "\n${YELLOW}Importante:${NC} Reinicie o sistema para que os drivers NVIDIA sejam carregados corretamente!"
+echo -e "Comando: ${CYAN}sudo reboot${NC}"
+
+# Criar arquivo de relatório
+if [ "$ONLY_CONFIG" = false ]; then
+    echo -e "\n${BLUE}Criando relatório de instalação...${NC}"
+    REPORT_FILE="$HOME/i3-install-report-$(date +%Y%m%d-%H%M%S).txt"
+    
+    {
+        echo "=== Relatório de Instalação i3 ==="
+        echo "Data: $(date)"
+        echo "Usuário: $USER"
+        echo "Hostname: $(hostname)"
+        echo ""
+        echo "=== Pacotes Instalados ==="
+        pacman -Qe | grep -E "(i3|nvidia|xorg|lightdm|kitty|rofi)" || true
+        echo ""
+        echo "=== Status NVIDIA ==="
+        if command -v nvidia-smi &>/dev/null; then
+            nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
+        else
+            echo "Driver NVIDIA não detectado"
+        fi
+        echo ""
+        echo "=== Configurações ==="
+        echo "Config dir: $CONFIG_DIR"
+        echo "Log file: $LOG_FILE"
+    } > "$REPORT_FILE"
+    
+    echo -e "${GREEN}Relatório salvo em: $REPORT_FILE${NC}"
+fi

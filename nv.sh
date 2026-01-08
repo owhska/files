@@ -242,22 +242,18 @@ install_nvidia_drivers() {
     msg "Instalando drivers NVIDIA..."
     
     # Determinar qual pacote NVIDIA instalar baseado no kernel
-    local kernel_package=$(uname -r)
+    local kernel_version=$(uname -r)
     local nvidia_package="nvidia"
     
-    case "$kernel_package" in
-        *lts*)
-            nvidia_package="nvidia-lts"
-            echo -e "${BLUE}Detectado kernel LTS, usando $nvidia_package${NC}"
-            ;;
-        *zen*|*hardened*)
-            nvidia_package="nvidia-dkms"
-            echo -e "${BLUE}Detectado kernel Zen/Hardened, usando $nvidia_package (DKMS)${NC}"
-            ;;
-        *)
-            echo -e "${BLUE}Usando driver padrão: $nvidia_package${NC}"
-            ;;
-    esac
+    if [[ $kernel_version == *lts* ]]; then
+        nvidia_package="nvidia-lts"
+        echo -e "${BLUE}Detectado kernel LTS, usando $nvidia_package${NC}"
+    elif [[ $kernel_version == *zen* ]] || [[ $kernel_version == *hardened* ]]; then
+        nvidia_package="nvidia-dkms"
+        echo -e "${BLUE}Detectado kernel Zen/Hardened, usando $nvidia_package (DKMS)${NC}"
+    else
+        echo -e "${BLUE}Usando driver padrão: $nvidia_package${NC}"
+    fi
     
     # Pacotes NVIDIA para instalar
     local nvidia_packages=(
@@ -285,6 +281,12 @@ install_nvidia_drivers() {
             echo -e "${YELLOW}Você pode tentar instalar manualmente depois${NC}"
             return 1
         }
+    fi
+    
+    # Verificar se o driver foi instalado antes de configurar
+    if ! pacman -Q nvidia 2>/dev/null && ! pacman -Q nvidia-dkms 2>/dev/null && ! pacman -Q nvidia-lts 2>/dev/null; then
+        echo -e "${RED}❌ Driver NVIDIA não instalado, pulando configuração${NC}"
+        return 1
     fi
     
     # Configurar drivers
@@ -327,14 +329,18 @@ EOF
         fi
         
         # Adicionar módulos NVIDIA se não estiverem presentes
-        if ! grep -q "MODULES=.*nvidia" /etc/mkinitcpio.conf; then
+        if grep -q "^MODULES=(" /etc/mkinitcpio.conf && ! grep -q "MODULES=.*nvidia" /etc/mkinitcpio.conf; then
             sudo sed -i '/^MODULES=(/ s/)$/ nvidia nvidia_modeset nvidia_uvm nvidia_drm)/' /etc/mkinitcpio.conf
         fi
         
-        # Regenerar initramfs
-        sudo mkinitcpio -P || {
-            echo -e "${YELLOW}⚠️  mkinitcpio encontrou problemas, tentando continuar...${NC}"
-        }
+        # Regenerar initramfs com verificação
+        if sudo mkinitcpio -P 2>/dev/null; then
+            echo -e "${GREEN}✓ initramfs atualizado com sucesso${NC}"
+        else
+            echo -e "${YELLOW}⚠️  mkinitcpio encontrou problemas, restaurando backup...${NC}"
+            sudo cp /etc/mkinitcpio.conf.backup /etc/mkinitcpio.conf
+            sudo mkinitcpio -P
+        fi
     fi
     
     # 3. Configuração do Xorg
@@ -355,37 +361,20 @@ EndSection
 EOF
     fi
     
-    # 4. Configurar Wayland (opcional)
-    if [ -f /etc/gdm/custom.conf ] || [ -f /etc/lightdm/lightdm.conf ]; then
-        echo -e "${BLUE}Configurando variáveis de ambiente para NVIDIA...${NC}"
-        
-        # Adicionar ao /etc/environment sem sobrescrever
-        grep -q "LIBVA_DRIVER_NAME=nvidia" /etc/environment 2>/dev/null || \
-            echo "LIBVA_DRIVER_NAME=nvidia" | sudo tee -a /etc/environment > /dev/null
-        
-        grep -q "GBM_BACKEND=nvidia-drm" /etc/environment 2>/dev/null || \
-            echo "GBM_BACKEND=nvidia-drm" | sudo tee -a /etc/environment > /dev/null
-        
-        grep -q "__GLX_VENDOR_LIBRARY_NAME=nvidia" /etc/environment 2>/dev/null || \
-            echo "__GLX_VENDOR_LIBRARY_NAME=nvidia" | sudo tee -a /etc/environment > /dev/null
-    fi
+    # 4. Configurar variáveis de ambiente
+    echo -e "${BLUE}Configurando variáveis de ambiente para NVIDIA...${NC}"
     
-    # 5. Verificar módulos carregados
-    msg "Verificando se módulos NVIDIA estão carregados..."
-    if [ -f /usr/lib/modules/$(uname -r)/kernel/drivers/video/nvidia.ko.gz ]; then
-        if ! lsmod | grep -q nvidia; then
-            echo -e "${YELLOW}Módulos NVIDIA não estão carregados${NC}"
-            echo -e "${BLUE}Tentando carregar módulos...${NC}"
-            sudo modprobe nvidia nvidia_modeset nvidia_uvm nvidia_drm 2>/dev/null || {
-                echo -e "${YELLOW}⚠️  Não foi possível carregar módulos agora${NC}"
-                echo -e "${YELLOW}  Eles serão carregados na próxima reinicialização${NC}"
-            }
-        else
-            echo -e "${GREEN}✓ Módulos NVIDIA carregados com sucesso${NC}"
-        fi
-    fi
+    # Adicionar ao /etc/environment sem sobrescrever
+    grep -q "LIBVA_DRIVER_NAME=nvidia" /etc/environment 2>/dev/null || \
+        echo "LIBVA_DRIVER_NAME=nvidia" | sudo tee -a /etc/environment > /dev/null
     
-    # 6. Verificar se o driver está funcionando
+    grep -q "GBM_BACKEND=nvidia-drm" /etc/environment 2>/dev/null || \
+        echo "GBM_BACKEND=nvidia-drm" | sudo tee -a /etc/environment > /dev/null
+    
+    grep -q "__GLX_VENDOR_LIBRARY_NAME=nvidia" /etc/environment 2>/dev/null || \
+        echo "__GLX_VENDOR_LIBRARY_NAME=nvidia" | sudo tee -a /etc/environment > /dev/null
+    
+    # 5. Verificar se o driver está funcionando
     msg "Verificando status do driver NVIDIA..."
     if command -v nvidia-smi &> /dev/null; then
         echo -e "\n${GREEN}=== NVIDIA-SMI Output ===${NC}"
@@ -616,14 +605,14 @@ EOF
         msg "Warning: .emacs file not found inside emacs directory!"
     fi
 
-    # Instalar fonts Fira Code do AUR se necessário
+    # Instalar fonts Fira Code se disponível
     if ! pacman -Qi ttf-firacode-nerd &>/dev/null; then
         msg "Installing FiraCode Nerd Font..."
         if command -v yay &> /dev/null; then
             yay -S --noconfirm ttf-firacode-nerd 2>/dev/null || \
                 echo -e "${YELLOW}Falha ao instalar FiraCode Nerd Font${NC}"
         else
-            msg "Note: yay not installed. Please install ttf-firacode-nerd manually from AUR"
+            echo -e "${YELLOW}Note: yay não está instalado, instale ttf-firacode-nerd manualmente depois${NC}"
         fi
     fi
 
@@ -731,7 +720,7 @@ else
 fi
 
 # =============================================================================
-# ZSH + Oh My Zsh + Plugins (VERSÃO SEGURA)
+# ZSH + Oh My Zsh + Plugins
 # =============================================================================
 if [ "$ONLY_CONFIG" = false ]; then
     clear
@@ -764,20 +753,8 @@ if [ "$ONLY_CONFIG" = false ]; then
                 echo -e "${YELLOW}Falha ao instalar Oh My Zsh${NC}"
             }
 
-            msg "Instalando plugins populares do zsh..."
-            ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
-
-            # Instala plugins apenas se o Oh My Zsh foi instalado
-            if [ -d "$ZSH_CUSTOM" ]; then
-                git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM}/plugins/zsh-autosuggestions 2>/dev/null || true
-                git clone https://github.com/zsh-users/zsh-syntax-highlighting ${ZSH_CUSTOM}/plugins/zsh-syntax-highlighting 2>/dev/null || true
-                git clone https://github.com/zsh-users/zsh-completions ${ZSH_CUSTOM}/plugins/zsh-completions 2>/dev/null || true
-            else
-                msg "Aviso: Diretório do Oh My Zsh não encontrado, pulando plugins..."
-            fi
-
+            # Configurar .zshrc personalizado
             msg "Configurando .zshrc personalizado..."
-            # Cria .zshrc personalizado
             cat > "$HOME/.zshrc" << 'EOF'
 # Path to your oh-my-zsh installation.
 export ZSH="$HOME/.oh-my-zsh"
@@ -786,8 +763,6 @@ ZSH_THEME="robbyrussell"
 
 plugins=(
     git
-    zsh-autosuggestions
-    zsh-syntax-highlighting
 )
 
 source $ZSH/oh-my-zsh.sh
@@ -817,22 +792,15 @@ alias gp='git push'
 alias gl='git log --oneline --graph'
 EOF
 
-            # AGORA muda o shell padrão - APENAS no final de tudo
-            msg "Definindo zsh como shell padrão para sessões futuras..."
-            sudo chsh -s $(which zsh) $USER 2>/dev/null && \
-                msg "zsh definido como shell padrão!" || \
+            # Muda o shell padrão
+            msg "Definindo zsh como shell padrão..."
+            if sudo chsh -s $(which zsh) $USER 2>/dev/null; then
+                msg "zsh definido como shell padrão!"
+            else
                 echo -e "${YELLOW}Não foi possível alterar o shell padrão${NC}"
+            fi
 
             msg "zsh + oh-my-zsh instalados com sucesso!"
-            echo -e "${GREEN}Na próxima vez que você fizer login ou abrir um novo terminal, o zsh será ativado automaticamente!${NC}"
-
-            # Apenas informa o usuário sem executar o zsh
-            echo
-            echo -e "${CYAN}Para ativar o zsh AGORA (opcional), execute:${NC}"
-            echo -e "${CYAN}  exec zsh${NC}"
-            echo -e "${CYAN}Ou simplesmente feche e reabra o terminal.${NC}"
-        else
-            echo -e "${YELLOW}zsh não foi instalado corretamente, continuando sem zsh${NC}"
         fi
     fi
 else

@@ -311,6 +311,12 @@ if [ "$ONLY_CONFIG" = false ]; then
     msg "Installing core packages..."
     progress_install "Installing core packages" "${PACKAGES_CORE[@]}" || die "Failed to install core packages"
 
+msg "Installing NVIDIA drivers..."
+    progress_install "Installing NVIDIA drivers" "${PACKAGES_NVIDIA[@]}" || die "Failed to install NVIDIA drivers"
+    
+    # ADICIONE ESTA LINHA - Configurar NVIDIA
+    configure_nvidia
+
     msg "Installing UI components..."
     progress_install "Installing UI packages" "${PACKAGES_UI[@]}" || die "Failed to install UI packages"
 

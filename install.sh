@@ -436,9 +436,9 @@ general {
 }
 
 # Ordem dos módulos exibidos (da esquerda para a direita)
-#order += "wireless _first_"
+order += "wireless _first_"
 order += "disk /"
-#order += "battery all"
+order += "battery all"
 order += "cpu_usage"
 order += "memory"
 order += "time"
@@ -592,6 +592,7 @@ alias ff="fastfetch"
 alias sai="sudo pacman -S"
 alias sup="sudo pacman -Syu"
 alias t="tmux"
+alias disk='df -h | awk "NR==1 || (\$1 ~ /nvme0n1/ && \$6 != \"\")"'
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
